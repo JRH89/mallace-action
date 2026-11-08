@@ -1,0 +1,101 @@
+name: Mallace find-and-fix
+description: Find security bugs, prove each with a regression test, fix them and open pull requests. Spend is capped per run.
+author: Mallace
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  openai-api-key:
+    description: 'OpenAI-compatible API key (store it as a repository secret). Not needed when mode is scan.'
+    required: false
+    default: ''
+  mode:
+    description: '`fix` proves, fixes and opens PRs; `scan` only lists suspected bugs (free, no key).'
+    required: false
+    default: fix
+  budget:
+    description: 'Most the AI may spend this run, in dollars.'
+    required: false
+    default: '2'
+  max-findings:
+    description: 'Findings to prove and fix per run (1-5).'
+    required: false
+    default: '3'
+  paths:
+    description: 'Space- or newline-separated repository paths to limit the scan to (default: auto-detected application code).'
+    required: false
+    default: ''
+  base:
+    description: 'Branch to fix and open PRs against (default: the repository default branch).'
+    required: false
+    default: ''
+  github-token:
+    description: 'Token used to open issues and PRs. The default GITHUB_TOKEN works; use a PAT if you want CI to run on Mallace PRs.'
+    required: false
+    default: ${{ github.token }}
+  version:
+    description: 'Mallace version to install from PyPI.'
+    required: false
+    default: 0.1.0a25
+
+outputs:
+  findings:
+    description: 'Number of suspected findings.'
+    value: ${{ steps.run.outputs.findings }}
+  fixed:
+    description: 'Number of findings fixed with a PR opened.'
+    value: ${{ steps.run.outputs.fixed }}
+  pull-requests:
+    description: 'Space-separated PR numbers opened this run.'
+    value: ${{ steps.run.outputs.pull-requests }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install Mallace
+      shell: bash
+      env:
+        MALLACE_VERSION: ${{ inputs.version }}
+      run: |
+        python -m pip install --disable-pip-version-check --quiet "mallace==${MALLACE_VERSION}"
+
+    - name: Fetch the base branch
+      shell: bash
+      env:
+        BASE: ${{ inputs.base || github.event.repository.default_branch }}
+      run: |
+        # Fixes are built on origin/<base> and need its full history to push a branch.
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then git fetch --quiet --unshallow --no-tags origin; fi
+        git fetch --quiet --no-tags origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+
+    - name: Run Mallace
+      id: run
+      shell: bash
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        MODE: ${{ inputs.mode }}
+        BUDGET: ${{ inputs.budget }}
+        MAX_FINDINGS: ${{ inputs.max-findings }}
+        PATHS: ${{ inputs.paths }}
+        BASE: ${{ inputs.base || github.event.repository.default_branch }}
+      run: |
+        set -o pipefail
+        args=(fix . --base "$BASE" --budget "$BUDGET" --max-findings "$MAX_FINDINGS" --json)
+        case "$MODE" in
+          scan) args+=(--scan-only) ;;
+          fix) if [ -z "$OPENAI_API_KEY" ]; then echo "::error::mode fix needs openai-api-key (add an OPENAI_API_KEY repository secret) or set mode: scan"; exit 2; fi ;;
+          *) echo "::error::mode must be fix or scan"; exit 2 ;;
+        esac
+        for path in $PATHS; do args+=(--path "$path"); done
+        report="$RUNNER_TEMP/mallace-report.json"
+        status=0
+        mallace "${args[@]}" > "$report" || status=$?
+        if [ ! -s "$report" ]; then echo "::error::Mallace did not produce a report (exit $status)"; exit "${status:-2}"; fi
+        python -m mallace.remediation.action_summary "$report" "$MODE"
+        exit "$status"
