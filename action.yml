@@ -41,7 +41,7 @@ inputs:
   version:
     description: 'Mallace version to install from PyPI.'
     required: false
-    default: 0.1.0a27
+    default: 0.1.0a28
 
 outputs:
   findings:
