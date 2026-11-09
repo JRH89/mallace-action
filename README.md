@@ -4,7 +4,7 @@ Mallace finds security bugs in your Python and JavaScript/TypeScript code and pr
 
 ## Quick start
 
-1. Add an `OPENAI_API_KEY` repository secret. Without it, Mallace only scans and reports.
+1. Sign in at [mallace.codefrontlabs.com/app](https://mallace.codefrontlabs.com/app), create your free license key, and add it as the `MALLACE_LICENSE` repository secret. Without it, Mallace only scans and reports.
 2. In **Settings → Actions → General**, enable **Allow GitHub Actions to create and approve pull requests**.
 3. Add `.github/workflows/mallace.yml`:
 
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: JRH89/mallace-action@v0
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          license-key: ${{ secrets.MALLACE_LICENSE }}
           budget: '2'          # most the AI may spend per run, in dollars
 ```
 
@@ -39,13 +39,17 @@ Or sign in at [mallace.codefrontlabs.com/app](https://mallace.codefrontlabs.com/
 3. **Fix.** A second model writes the fix. The test must pass afterwards, and an independent reviewer model must approve the change.
 4. **Deliver.** One issue and one pull request per verified fix. Findings are annotated on their lines and a report is written to the job summary.
 
-Spend is a hard cap across every model call in the run.
+Spend is a hard cap across every model call in the run, and also counts toward your plan's monthly allowance. Only the code around each finding is sent to the Mallace service to write its test and fix, and it is never stored.
+
+## Plans
+
+Scanning is always free. **Free** includes fixes on 1 repository up to a monthly AI allowance. **Pro** ($29/month or $290/year) covers unlimited repositories with a larger allowance. Manage your plan at [mallace.codefrontlabs.com/app](https://mallace.codefrontlabs.com/app).
 
 ## Inputs
 
 | Input | Default | Meaning |
 |---|---|---|
-| `openai-api-key` | | OpenAI-compatible key; not needed for `mode: scan` |
+| `license-key` | | Your Mallace license key (`MALLACE_LICENSE` secret); not needed for `mode: scan` |
 | `mode` | `fix` | `fix` proves, fixes and opens PRs; `scan` only reports |
 | `budget` | `2` | Most the AI may spend this run, in dollars |
 | `max-findings` | `3` | Findings to prove and fix per run (1-5) |
@@ -60,7 +64,8 @@ Outputs: `findings`, `fixed`, `pull-requests`.
 
 ```bash
 pip install --pre mallace
-mallace doctor            # checks Docker, your key, GitHub login; prints fixes
+mallace activate          # paste your license key
+mallace doctor            # checks Docker, your license, GitHub login; prints fixes
 mallace fix --scan-only   # free
 mallace fix --budget 5
 ```

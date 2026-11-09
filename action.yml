@@ -1,13 +1,17 @@
 name: Mallace find-and-fix
-description: Find security bugs, prove each with a regression test, fix them and open pull requests. Spend is capped per run.
+description: Find security bugs, prove each with a regression test, fix them and open pull requests. Free plan included; spend is capped per run.
 author: Mallace
 branding:
   icon: shield
   color: red
 
 inputs:
+  license-key:
+    description: 'Mallace license key (store it as the MALLACE_LICENSE repository secret; free keys at https://mallace.codefrontlabs.com/app). Not needed when mode is scan.'
+    required: false
+    default: ''
   openai-api-key:
-    description: 'OpenAI-compatible API key (store it as a repository secret). Not needed when mode is scan.'
+    description: 'No longer used: fixes now run on the metered Mallace service with your license key.'
     required: false
     default: ''
   mode:
@@ -37,7 +41,7 @@ inputs:
   version:
     description: 'Mallace version to install from PyPI.'
     required: false
-    default: 0.1.0a26
+    default: 0.1.0a27
 
 outputs:
   findings:
@@ -77,7 +81,8 @@ runs:
       id: run
       shell: bash
       env:
-        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        MALLACE_LICENSE: ${{ inputs.license-key }}
+        LEGACY_OPENAI_KEY: ${{ inputs.openai-api-key }}
         GH_TOKEN: ${{ inputs.github-token }}
         MODE: ${{ inputs.mode }}
         BUDGET: ${{ inputs.budget }}
@@ -89,7 +94,13 @@ runs:
         args=(fix . --base "$BASE" --budget "$BUDGET" --max-findings "$MAX_FINDINGS" --json)
         case "$MODE" in
           scan) args+=(--scan-only) ;;
-          fix) if [ -z "$OPENAI_API_KEY" ]; then echo "::error::mode fix needs openai-api-key (add an OPENAI_API_KEY repository secret) or set mode: scan"; exit 2; fi ;;
+          fix)
+            if [ -z "$MALLACE_LICENSE" ]; then
+              hint=""; [ -n "$LEGACY_OPENAI_KEY" ] && hint=" (openai-api-key is no longer used)"
+              echo "::error::mode fix needs a Mallace license key${hint}. Get a free key at https://mallace.codefrontlabs.com/app, add it as the MALLACE_LICENSE repository secret and pass it as the license-key input, or set mode: scan"
+              exit 2
+            fi
+            unset LEGACY_OPENAI_KEY ;;
           *) echo "::error::mode must be fix or scan"; exit 2 ;;
         esac
         for path in $PATHS; do args+=(--path "$path"); done
