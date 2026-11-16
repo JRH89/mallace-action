@@ -15,7 +15,7 @@ inputs:
     required: false
     default: ''
   mode:
-    description: '`fix` proves, fixes and opens PRs; `scan` only lists suspected bugs (free, no key).'
+    description: '`fix` proves, fixes and opens PRs; `scan` only lists suspected bugs (free, no key); `attack` starts the app from this code in a sandbox with no network, attacks it, then fixes what it proved with PRs.'
     required: false
     default: fix
   budget:
@@ -41,7 +41,7 @@ inputs:
   version:
     description: 'Mallace version to install from PyPI.'
     required: false
-    default: 0.1.0a37
+    default: 0.1.0a38
 
 outputs:
   findings:
@@ -101,7 +101,19 @@ runs:
               exit 2
             fi
             unset LEGACY_OPENAI_KEY ;;
-          *) echo "::error::mode must be fix or scan"; exit 2 ;;
+          attack)
+            if [ -z "$MALLACE_LICENSE" ]; then
+              echo "::error::mode attack needs a Mallace license key. Get a free key at https://mallace.codefrontlabs.com/app and add it as the MALLACE_LICENSE repository secret"
+              exit 2
+            fi
+            unset LEGACY_OPENAI_KEY
+            # The app runs only inside Docker on this runner, from the checked-out code; nothing deployed is touched.
+            log="$RUNNER_TEMP/mallace-attack.txt"
+            status=0
+            mallace attack . --base "$BASE" --budget "$BUDGET" --fix 2>&1 | tee "$log" || status=$?
+            { echo '## Mallace attack'; echo; echo '~~~'; cat "$log"; echo '~~~'; } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status" ;;
+          *) echo "::error::mode must be fix, scan or attack"; exit 2 ;;
         esac
         for path in $PATHS; do args+=(--path "$path"); done
         report="$RUNNER_TEMP/mallace-report.json"
